@@ -77,6 +77,14 @@ public final class Premium {
 
     /** Settings: drops the "Upgrade" row free accounts get. */
     @SuppressWarnings("rawtypes")
+    /** A mutable copy of a settings row list with the Upgrade row filtered, or null for null. */
+    public static List copyFilteredSettingsRows(List rows) {
+        if (rows == null) return null;
+        List copy = new ArrayList(rows);
+        filterSettingsRows(copy);
+        return copy;
+    }
+
     public static void filterSettingsRows(List rows) {
         if (rows == null || !enabled()) return;
         int upgrade = Utils.resourceId("upgrade", "string");

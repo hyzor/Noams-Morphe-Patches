@@ -105,12 +105,20 @@ val hidePremiumPatch = bytecodePatch(
                     it.opcode == Opcode.NEW_INSTANCE && ((it as ReferenceInstruction).reference as TypeReference).type == rowType
                 } == true && classDef.fields.any { it.type == "Ljava/util/List;" }
             } ?: throw PatchException("The settings list builder was not found")
-            val listFields = builder.first.fields.filter {
-                it.type == "Ljava/util/List;" || it.type == "Ljava/util/ArrayList;"
-            }
             val constructor = mutableClassDefBy(builder.first).methods.single {
                 it.name == "<init>" && it.parameterTypes == builder.second.parameterTypes
             }
+            // Only the list fields this constructor actually writes, and never a static one.
+            val written = constructor.implementation!!.instructions.mapNotNull {
+                ((it as? ReferenceInstruction)?.reference as? com.android.tools.smali.dexlib2.iface.reference.FieldReference)
+                    ?.takeIf { field -> field.definingClass == builder.first.type }?.name
+            }.toSet()
+            val listFields = builder.first.fields.filter { field ->
+                (field.type == "Ljava/util/List;" || field.type == "Ljava/util/ArrayList;") &&
+                    !com.android.tools.smali.dexlib2.AccessFlags.STATIC.isSet(field.accessFlags) &&
+                    field.name in written
+            }
+            if (listFields.isEmpty()) throw PatchException("The settings list fields were not found")
             // The constructor's `this` sits above v15, and iget-object (22c) only addresses
             // v0-v15; smali silently drops such an access. Copy it into v0 first.
             val self = constructor.implementation!!.registerCount - constructor.parameterTypes.size - 1
@@ -121,10 +129,9 @@ val hidePremiumPatch = bytecodePatch(
                 """
                     move-object/from16 v0, v$self
                     iget-object v1, v0, ${builder.first.type}->${field.name}:${field.type}
-                    new-instance v2, Ljava/util/ArrayList;
-                    invoke-direct { v2, v1 }, Ljava/util/ArrayList;-><init>(Ljava/util/Collection;)V
+                    invoke-static { v1 }, $PREMIUM->copyFilteredSettingsRows(Ljava/util/List;)Ljava/util/List;
+                    move-result-object v2
                     iput-object v2, v0, ${builder.first.type}->${field.name}:${field.type}
-                    invoke-static { v2 }, $PREMIUM->filterSettingsRows(Ljava/util/List;)V
                 """
             }
             constructor.apply {

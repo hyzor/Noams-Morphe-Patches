@@ -151,20 +151,9 @@ val lichessPuzzlesPatch = bytecodePatch(
                 instruction.opcode == Opcode.INVOKE_DIRECT && it.name == "<init>" && it.parameterTypes.map(CharSequence::toString) == listOf(MODE)
             }?.definingClass
         } ?: throw PatchException("Solve Puzzles' screen was not found")
-        val activityType = "Landroidx/fragment/app/FragmentActivity;"
-        // 4.10.18 keeps the router and activity on the listener; 4.10.23 delegates to a holder.
-        val directRouter = listener.fields.firstOrNull { it.type == navigate.definingClass }
-        val directActivity = listener.fields.firstOrNull { it.type == activityType }
-        val holder = if (directRouter != null && directActivity != null) null else {
-            listener.fields.firstNotNullOfOrNull { field ->
-                val def = classDefByOrNull { it.type == field.type } ?: return@firstNotNullOfOrNull null
-                if (def.fields.any { it.type == navigate.definingClass } && def.fields.any { it.type == activityType }) {
-                    field to def
-                } else null
-            } ?: throw PatchException("The listener's router and activity were not found")
-        }
-        // The click is handled in Java: the listener's router and activity are found by shape,
-        // so the two versions' different listener layouts do not need separate smali.
+        // The click is handled in Java: the listener's router and activity are found with their
+        // public fields at runtime, so the two versions' different listener layouts (4.10.18 keeps
+        // them on the listener, 4.10.23 delegates to a holder) do not need separate smali.
         val guestMode = enumField(MODE, "GUEST")
         solvePuzzles.addInstructionsWithLabels(
             0,
@@ -402,6 +391,7 @@ val lichessPuzzlesPatch = bytecodePatch(
                 hookHubState(HUB_STATE, HUB_PATH, HUB_USER, arity = 12, pathIndex = 6, userIndex = 5)
             mutableClassDefByOrNull(HUB_STATE_41023) != null ->
                 hookHubState(HUB_STATE_41023, HUB_PATH_41023, HUB_USER_41023, arity = 13, pathIndex = 5, userIndex = 6)
+            else -> throw PatchException("The puzzles hub state was not found for this version")
         }
 
         val score: MutableMethod = repository.methods.singleOrNull { method ->

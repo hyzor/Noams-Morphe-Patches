@@ -4,6 +4,7 @@ import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.instructions
+import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.noam.patches.chesscom.misc.settings.settingsPatch
 import app.noam.patches.chesscom.shared.Constants
@@ -72,6 +73,7 @@ val customTabsPatch = bytecodePatch(
             }
             // The bar composable prepends Play and Puzzles itself; drop Puzzles when it is off.
             val homeScreen = "Lcom/chess/home/ui/HomeScreen;"
+            var tabListHooks = 0
             classDefForEach { classDef ->
                 mutableClassDefBy(classDef).methods.forEach { method ->
                     val implementation = method.implementation ?: return@forEach
@@ -86,6 +88,10 @@ val customTabsPatch = bytecodePatch(
                             instructions.getOrNull(index + 1)?.opcode == Opcode.MOVE_RESULT_OBJECT
                     }
                     inserts.sortedDescending().forEach { index ->
+                        val reference = (instructions[index] as? ReferenceInstruction)?.reference as? MethodReference
+                        if (reference?.returnType !in setOf("Ljava/util/ArrayList;", "Ljava/util/List;")) {
+                            throw PatchException("The bottom bar list builder does not return a list")
+                        }
                         val register = (instructions[index + 1] as OneRegisterInstruction).registerA
                         method.addInstructions(
                             index + 2,
@@ -94,9 +100,11 @@ val customTabsPatch = bytecodePatch(
                                 move-result-object v$register
                             """,
                         )
+                        tabListHooks++
                     }
                 }
             }
+            if (tabListHooks == 0) throw PatchException("The bottom bar tab list was not found")
         }
     }
 }

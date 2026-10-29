@@ -3,6 +3,7 @@ package app.noam.patches.geocaching.search
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstructions
+import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.noam.patches.geocaching.misc.extension.extensionHookPatch
 import app.noam.patches.geocaching.shared.Constants
@@ -41,7 +42,11 @@ internal val searchReplacePatch = bytecodePatch(
         // at each return of onPrepareMenu, which hides every item it doesn't know.
         val mapMenu = mutableClassDefBy("Lcom/groundspeak/geocaching/intro/mainmap/map/k;").methods
         mapMenu.first { it.name == "d" && it.parameters.size == 2 }.apply {
-            addInstruction(implementation!!.instructions.size - 1,
+            val instructions = implementation!!.instructions
+            if (instructions.last().opcode != Opcode.RETURN_VOID) {
+                throw PatchException("The map menu inflate does not end with a return: $name")
+            }
+            addInstruction(instructions.size - 1,
                 "invoke-static/range { p1 .. p1 }, ${Constants.GC_LIVE_SESSION}->addMenu(Landroid/view/Menu;)V")
         }
         mapMenu.first { it.name == "b" && it.parameters.size == 1 }.apply {

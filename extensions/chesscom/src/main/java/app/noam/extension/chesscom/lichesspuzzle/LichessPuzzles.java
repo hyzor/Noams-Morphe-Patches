@@ -50,6 +50,7 @@ public final class LichessPuzzles {
     /** Between Puzzles from Lichess and Solve Puzzles, guest puzzles are Lichess's. */
     private static volatile boolean active;
     private static volatile boolean freshQueue = true;
+    private static final java.util.List<Runnable> countWaiters = new java.util.ArrayList<>();
     /** The Lichess puzzle screen is the activity in front. */
     private static volatile boolean puzzleVisible;
     private static boolean watching;
@@ -118,11 +119,16 @@ public final class LichessPuzzles {
         frozenUser = lastUser;
         freezeActive = frozenPath != null || frozenUser != null;
         unfreezeAt = Long.MAX_VALUE;
+        return LICHESS_PUZZLES;
+    }
+
+    /** Enters the session only once the puzzle screen is actually opening. */
+    private static void beginSession() {
         active = true;
         freshQueue = true;
         puzzleVisible = true;
+        unfreezeAt = Long.MAX_VALUE;
         watchScreen();
-        return LICHESS_PUZZLES;
     }
 
     /**
@@ -135,8 +141,14 @@ public final class LichessPuzzles {
         if (action == LICHESS_PUZZLES) {
             try {
                 navigateGuest(listener, directionsType, guestField);
+                beginSession();
             } catch (Throwable throwable) {
                 Utils.logError("open Lichess puzzles", throwable);
+                // No session without the screen: drop the freeze so the app is not left in it.
+                freezeActive = false;
+                frozenPath = null;
+                frozenUser = null;
+                Utils.toast("Couldn't open Lichess puzzles");
             }
         }
         return true;
@@ -340,13 +352,14 @@ public final class LichessPuzzles {
     public static void onGuestPuzzles(Object repository) {
         if (!active) return;
         boolean fresh = freshQueue;
-        freshQueue = false;
         new Thread(() -> {
             Context context = Utils.context();
             if (context == null) return;
             PuzzleStore store = PuzzleStore.get(context);
-            if (fresh) clearGuestQueue(repository, store);
-            give(repository, store, BATCH);
+            boolean cleared = !fresh || clearGuestQueue(repository, store);
+            boolean given = give(repository, store, BATCH);
+            // Only a session whose first insert worked has emptied the queue; otherwise retry.
+            if (fresh && cleared && given) freshQueue = false;
         }, "MorpheLichessPuzzles").start();
     }
 
@@ -355,8 +368,8 @@ public final class LichessPuzzles {
      * (older and served first) cannot be played in a Lichess session. 4.10.23's delete lives in a
      * coroutine the patch cannot name, so this is a no-op there.
      */
-    private static void clearGuestQueue(Object repository, PuzzleStore store) {
-        if (puzzleDbField().isEmpty() || puzzleDbClear().isEmpty()) return;
+    private static boolean clearGuestQueue(Object repository, PuzzleStore store) {
+        if (puzzleDbField().isEmpty() || puzzleDbClear().isEmpty()) return true;
         try {
             Class<?> sourceClass = Class.forName("com.chess.features.puzzles.db.model.ProblemSource");
             Field field = repository.getClass().getDeclaredField(puzzleDbField());
@@ -365,8 +378,10 @@ public final class LichessPuzzles {
             puzzleDb.getClass().getMethod(puzzleDbClear(), sourceClass)
                 .invoke(puzzleDb, enumValue(sourceClass, "RATED_GUEST"));
             store.ungive();
+            return true;
         } catch (Throwable throwable) {
             Utils.logError("Guest puzzles not cleared", throwable);
+            return false;
         }
     }
 
@@ -414,7 +429,6 @@ public final class LichessPuzzles {
             save(after);
             count(correct ? SOLVED : FAILED);
             store.solved(number);
-            STORE_WORK.execute(() -> counts = null);
             give(repository, store, 1);
 
             int newRating = (int) Math.round(after.rating);
@@ -448,12 +462,12 @@ public final class LichessPuzzles {
     }
 
     /** Hands Lichess puzzles near the rating to chess.com's puzzle database as guest puzzles. */
-    private static void give(Object repository, PuzzleStore store, int count) {
+    private static boolean give(Object repository, PuzzleStore store, int count) {
         try {
             List<PuzzleStore.Puzzle> puzzles = store.take(puzzleRating(), count);
             if (puzzles.isEmpty()) {
                 Utils.toast("You've played all your downloaded Lichess puzzles. Download more in settings.");
-                return;
+                return false;
             }
             Class<?> sourceClass = Class.forName("com.chess.features.puzzles.db.model.ProblemSource");
             Object guest = enumValue(sourceClass, "RATED_GUEST");
@@ -480,12 +494,14 @@ public final class LichessPuzzles {
             dao.setAccessible(true);
             Object target = dao.get(repository);
             target.getClass().getMethod(daoInsert(), List.class).invoke(target, rows);
+            counts = null;
+            return true;
         } catch (Throwable throwable) {
             Utils.logError("Lichess puzzles not stored", throwable);
+            return false;
         }
     }
 
-    /** The Lichess puzzle rating, shown where chess.com shows its own during a Lichess session. */
     /** The Lichess rating as a long while a session runs; the app's value otherwise. */
     public static long currentRating(long original) {
         return session() ? rating() : original;
@@ -575,7 +591,13 @@ public final class LichessPuzzles {
     public static int[] counts(Runnable done) {
         int[] known = counts;
         Context context = Utils.context();
-        if (known != null || context == null || counting) return known;
+        if (known != null || context == null) return known;
+        if (done != null) {
+            synchronized (countWaiters) {
+                countWaiters.add(done);
+            }
+        }
+        if (counting) return null;
         counting = true;
         STORE_WORK.execute(() -> {
             try {
@@ -588,7 +610,12 @@ public final class LichessPuzzles {
             } finally {
                 counting = false;
             }
-            MAIN.post(done);
+            java.util.List<Runnable> waiters;
+            synchronized (countWaiters) {
+                waiters = new java.util.ArrayList<>(countWaiters);
+                countWaiters.clear();
+            }
+            for (Runnable waiter : waiters) MAIN.post(waiter);
         });
         return null;
     }
