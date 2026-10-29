@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. It is generated with ./gradlew generatePatchesList for every release. Manually editing this file can break third party tools that use this file.",
-  "version": "1.4.3",
+  "version": "1.5.0-4.10.23.1",
   "patches": [
     {
       "name": "AMOLED black",
@@ -25,6 +25,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -33,7 +40,7 @@
     },
     {
       "name": "Accent color",
-      "description": "Your own colour in place of chess.com's green, chosen in Noam's Patches → Accent color: buttons, highlights, icons and text of the app.",
+      "description": "Your own colour in place of chess.com's green, chosen in Noam's Patches \u2192 Accent color: buttons, highlights, icons and text of the app.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -50,6 +57,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -150,6 +164,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -176,6 +197,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -312,7 +340,7 @@
     },
     {
       "name": "Board colors",
-      "description": "Choose the board's square colours: your own, or one of chess.com's colour themes, on every board of the app. In Noam's Patches → Board colors.",
+      "description": "Choose the board's square colours: your own, or one of chess.com's colour themes, on every board of the app. In Noam's Patches \u2192 Board colors.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -329,6 +357,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -436,6 +471,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -532,6 +574,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -540,7 +589,7 @@
     },
     {
       "name": "Customize bottom bar",
-      "description": "Choose the tabs between Home and More (Puzzles, Learn, Watch, Bots, Train) and their order, in Noam's Patches → Bottom bar.",
+      "description": "Choose the tabs between Home and More (Puzzles, Learn, Watch, Bots, Train) and their order, in Noam's Patches \u2192 Bottom bar.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -557,6 +606,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -1213,6 +1269,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -1354,7 +1417,7 @@
     },
     {
       "name": "Keyboard stays left-to-right",
-      "description": "Right-to-left languages (Hebrew, Arabic…) change only the letters on the keys: the toolbar, suggestions and keys are not mirrored and the keyboard's menus stay in the phone's language. Switched in No-Google settings → Keyboard.",
+      "description": "Right-to-left languages (Hebrew, Arabic\u2026) change only the letters on the keys: the toolbar, suggestions and keys are not mirrored and the keyboard's menus stay in the phone's language. Switched in No-Google settings \u2192 Keyboard.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -1412,6 +1475,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -1420,7 +1490,7 @@
     },
     {
       "name": "Limits as toasts",
-      "description": "When a free limit is reached (Game Review, puzzles, lessons, drills, videos…) a short toast says so instead of a full-screen Premium offer, and promotional pop-ups are not shown. Nothing is unlocked: the limits stay exactly as they are.",
+      "description": "When a free limit is reached (Game Review, puzzles, lessons, drills, videos\u2026) a short toast says so instead of a full-screen Premium offer, and promotional pop-ups are not shown. Nothing is unlocked: the limits stay exactly as they are.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -1437,6 +1507,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -1660,6 +1737,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -1685,6 +1769,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -1752,6 +1843,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -2121,7 +2219,7 @@
     },
     {
       "name": "Runtime feature toggles",
-      "description": "Lets the No-Google settings turn off Gboard features that only work through Google servers (Emoji Kitchen, Tenor, Assistant voice, proofread…), hide the GIF and sticker tabs, and keep Gboard in incognito mode everywhere.",
+      "description": "Lets the No-Google settings turn off Gboard features that only work through Google servers (Emoji Kitchen, Tenor, Assistant voice, proofread\u2026), hide the GIF and sticker tabs, and keep Gboard in incognito mode everywhere.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -2176,6 +2274,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -2244,6 +2349,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -2317,6 +2429,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -2342,6 +2461,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -2460,6 +2586,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -2543,6 +2676,13 @@
           "targets": [
             {
               "version": "4.10.18-googleplay",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "4.10.23-googleplay",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
