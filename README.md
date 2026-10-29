@@ -26,8 +26,9 @@ they show up in the same source.
 
 Right now it has patches for these apps:
 
-- Chess.com 4.10.18: arrows and marked squares in every game, like on the website. Your own board colours and
-  accent colour, pure black backgrounds and the website's Arcade animations. Pick what Home and the bottom bar
+- Chess.com 4.10.18 and 4.10.23: arrows and marked squares in every game, like on the website (on 4.10.23 bots a
+  small Arrows/Clear chip over the board, since that bar is Compose). Your own board colours,
+  accent colour and pure black backgrounds, and the website's Arcade animations. Pick what Home and the bottom bar
   show and play time controls under a minute. Game Review asks who reviews each game: chess.com, Lichess with your
   Lichess account, or Stockfish 19 right on your phone, offline and with no daily limit. The Stockfish and Lichess
   reviews are still in beta. Stockfish also shows its best moves on finished games and the analysis boards, and

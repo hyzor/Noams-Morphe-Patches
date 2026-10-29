@@ -23,6 +23,11 @@ public final class Premium {
         return Features.hidePremiumPatched() && Features.isEnabled(Features.HIDE_PREMIUM);
     }
 
+    /** The fixed "Try Premium" banner: draw it only while premium content is shown. */
+    public static boolean hideBanner() {
+        return enabled();
+    }
+
     /** Home card and More banner: the offer a Premium member gets, which is none. */
     public static Object offer(Object offer) {
         return enabled() ? null : offer;

@@ -63,61 +63,64 @@ val customHomePatch = bytecodePatch(
     execute {
         markFeaturePatched("customHomePatched")
 
-        // Tell the extension which (obfuscated) class is which section.
-        val sectionBase = VsBotTileToStringFingerprint.originalClassDef.superclass
-            ?: throw PatchException("The Home section type was not found")
-        val pairs = mutableListOf<String>()
-        classDefForEach { classDef ->
-            if (classDef.superclass != sectionBase) return@classDefForEach
-            val printed = classDef.methods.firstOrNull { it.name == "toString" }?.implementation?.instructions
-                ?.firstOrNull { it.opcode == Opcode.CONST_STRING }
-                ?.let { ((it as ReferenceInstruction).reference as StringReference).string.substringBefore('(') }
-            if (printed in SECTIONS) pairs += "${classDef.type.toBinaryName()}=$printed"
-        }
-        if (pairs.size != SECTIONS.size) throw PatchException("Found ${pairs.size} of ${SECTIONS.size} Home sections")
-        mutableClassDefBy(HOME_LAYOUT).methods.first { it.name == "sectionClasses" }
-            .returnString(pairs.joinToString(";"))
+        // 4.10.18 still has the older Home list; 4.10.23 only has the redesign.
+        if (VsBotTileToStringFingerprint.matchOrNull() != null) {
+            // Tell the extension which (obfuscated) class is which section.
+            val sectionBase = VsBotTileToStringFingerprint.originalClassDef.superclass
+                ?: throw PatchException("The Home section type was not found")
+            val pairs = mutableListOf<String>()
+            classDefForEach { classDef ->
+                if (classDef.superclass != sectionBase) return@classDefForEach
+                val printed = classDef.methods.firstOrNull { it.name == "toString" }?.implementation?.instructions
+                    ?.firstOrNull { it.opcode == Opcode.CONST_STRING }
+                    ?.let { ((it as ReferenceInstruction).reference as StringReference).string.substringBefore('(') }
+                if (printed in SECTIONS) pairs += "${classDef.type.toBinaryName()}=$printed"
+            }
+            if (pairs.size != SECTIONS.size) throw PatchException("Found ${pairs.size} of ${SECTIONS.size} Home sections")
+            mutableClassDefBy(HOME_LAYOUT).methods.first { it.name == "sectionClasses" }
+                .returnString(pairs.joinToString(";"))
 
-        // Tiles: the loader's tile list, right before it is returned.
-        mutableClassDefBy(LOADER).methods.single {
-            it.returnType == "Ljava/util/List;" && it.parameterTypes.map { type -> type.toString() } == listOf(LOADER_STATE)
-        }.apply {
-            val returnIndex = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
-            val register = getInstruction<OneRegisterInstruction>(returnIndex).registerA
-            addInstructions(
-                returnIndex,
-                """
-                    invoke-static/range { v$register .. v$register }, $HOME_LAYOUT->tiles(Ljava/util/List;)Ljava/util/List;
-                    move-result-object v$register
-                """,
-            )
-        }
-
-        // Sections: every read of the sections map while the screen is being built.
-        val mapper = classDefByOrNull {
-            it.type.startsWith("Lcom/chess/home/play/data/HomeScreenLoader\$special\$\$inlined\$mapNotNull") &&
-                it.methods.any { method -> method.name == "emit" && method.reads(LOADER_STATE) }
-        } ?: throw PatchException("The Home screen mapper was not found")
-        mutableClassDefBy(mapper).methods.first { it.name == "emit" && it.reads(LOADER_STATE) }.apply {
-            val reads = instructions.withIndex().filter { (_, instruction) ->
-                instruction.opcode == Opcode.INVOKE_STATIC &&
-                    ((instruction as ReferenceInstruction).reference as MethodReference).let { ref ->
-                        ref.definingClass == LOADER_STATE && ref.returnType == "Ljava/util/Map;"
-                    }
-            }.map { it.index }
-            if (reads.isEmpty()) throw PatchException("The Home sections map is not read")
-            reads.reversed().forEach { index ->
-                if (getInstruction(index + 1).opcode != Opcode.MOVE_RESULT_OBJECT) {
-                    throw PatchException("Unexpected Home sections map read")
-                }
-                val register = getInstruction<OneRegisterInstruction>(index + 1).registerA
+            // Tiles: the loader's tile list, right before it is returned.
+            mutableClassDefBy(LOADER).methods.single {
+                it.returnType == "Ljava/util/List;" && it.parameterTypes.map { type -> type.toString() } == listOf(LOADER_STATE)
+            }.apply {
+                val returnIndex = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
+                val register = getInstruction<OneRegisterInstruction>(returnIndex).registerA
                 addInstructions(
-                    index + 2,
+                    returnIndex,
                     """
-                        invoke-static/range { v$register .. v$register }, $HOME_LAYOUT->sections(Ljava/util/Map;)Ljava/util/Map;
+                        invoke-static/range { v$register .. v$register }, $HOME_LAYOUT->tiles(Ljava/util/List;)Ljava/util/List;
                         move-result-object v$register
                     """,
                 )
+            }
+
+            // Sections: every read of the sections map while the screen is being built.
+            val mapper = classDefByOrNull {
+                it.type.startsWith("Lcom/chess/home/play/data/HomeScreenLoader\$special\$\$inlined\$mapNotNull") &&
+                    it.methods.any { method -> method.name == "emit" && method.reads(LOADER_STATE) }
+            } ?: throw PatchException("The Home screen mapper was not found")
+            mutableClassDefBy(mapper).methods.first { it.name == "emit" && it.reads(LOADER_STATE) }.apply {
+                val reads = instructions.withIndex().filter { (_, instruction) ->
+                    instruction.opcode == Opcode.INVOKE_STATIC &&
+                        ((instruction as ReferenceInstruction).reference as MethodReference).let { ref ->
+                            ref.definingClass == LOADER_STATE && ref.returnType == "Ljava/util/Map;"
+                        }
+                }.map { it.index }
+                if (reads.isEmpty()) throw PatchException("The Home sections map is not read")
+                reads.reversed().forEach { index ->
+                    if (getInstruction(index + 1).opcode != Opcode.MOVE_RESULT_OBJECT) {
+                        throw PatchException("Unexpected Home sections map read")
+                    }
+                    val register = getInstruction<OneRegisterInstruction>(index + 1).registerA
+                    addInstructions(
+                        index + 2,
+                        """
+                            invoke-static/range { v$register .. v$register }, $HOME_LAYOUT->sections(Ljava/util/Map;)Ljava/util/Map;
+                            move-result-object v$register
+                        """,
+                    )
+                }
             }
         }
 
@@ -130,7 +133,7 @@ val customHomePatch = bytecodePatch(
                     val method = when {
                         type == ACTIVITIES -> "recommendedActivities"
                         type == "Ljava/util/List;" -> "onlineNow"
-                        printedName(type)?.let { name -> REDESIGN_SECTIONS.any { name.startsWith(it) } } == true -> "section"
+                        sectionPrefix(type) != null -> "section"
                         else -> return@mapIndexedNotNull null
                     }
                     val register = "p${index + 1}"
@@ -154,6 +157,15 @@ private fun printedName(type: String): String? =
     context.classDefByOrNull { it.type == type }?.methods?.firstOrNull { it.name == "toString" }
         ?.implementation?.instructions?.firstOrNull { it.opcode == Opcode.CONST_STRING }
         ?.let { ((it as ReferenceInstruction).reference as StringReference).string }
+
+/** The redesign section a class prints, wherever in its toString the prefix sits. */
+context(context: app.morphe.patcher.patch.BytecodePatchContext)
+private fun sectionPrefix(type: String): String? =
+    context.classDefByOrNull { it.type == type }?.methods?.firstOrNull { it.name == "toString" }
+        ?.implementation?.instructions
+        ?.mapNotNull { (it as? ReferenceInstruction)?.reference as? StringReference }
+        ?.firstOrNull { reference -> REDESIGN_SECTIONS.any { reference.string.startsWith(it) } }
+        ?.let { reference -> REDESIGN_SECTIONS.first { reference.string.startsWith(it) } }
 
 /** Whether this method calls the loader state's map accessor. */
 private fun com.android.tools.smali.dexlib2.iface.Method.reads(stateType: String) =

@@ -66,10 +66,34 @@ public final class MoreEntry {
             if (rowClass == null) return items;
             for (Constructor<?> constructor : rowClass.getConstructors()) {
                 Class<?>[] types = constructor.getParameterTypes();
-                if (types.length == 5 && types[0] == ourKey.getClass() && types[1] == boolean.class) {
+                if (types.length < 2 || types[0] != ourKey.getClass() || types[1] != boolean.class) continue;
+                Object[] args = new Object[types.length];
+                args[0] = ourKey;
+                args[1] = Boolean.TRUE;
+                boolean usable = true;
+                for (int i = 2; i < types.length; i++) {
+                    Class<?> type = types[i];
+                    if (type == int.class) args[i] = 0;
+                    else if (type == long.class) args[i] = 0L;
+                    else if (type == boolean.class) args[i] = Boolean.FALSE;
+                    else if (type == float.class) args[i] = 0f;
+                    else if (type == double.class) args[i] = 0d;
+                    else if (type == short.class) args[i] = (short) 0;
+                    else if (type == byte.class) args[i] = (byte) 0;
+                    else if (type == char.class) args[i] = (char) 0;
+                    else if (type.getName().equals("kotlin.jvm.internal.DefaultConstructorMarker")) {
+                        usable = false;
+                        break;
+                    } else args[i] = null;
+                }
+                if (!usable) continue;
+                try {
+                    Object row = constructor.newInstance(args);
                     List result = new ArrayList(items);
-                    result.add(0, constructor.newInstance(ourKey, true, null, null, null));
+                    result.add(0, row);
                     return result;
+                } catch (Throwable ignored) {
+                    // Try the next constructor shape.
                 }
             }
         } catch (Throwable throwable) {
