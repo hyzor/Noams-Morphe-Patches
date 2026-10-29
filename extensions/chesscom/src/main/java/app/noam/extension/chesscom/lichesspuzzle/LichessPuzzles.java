@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 
 import java.lang.ref.WeakReference;
@@ -16,6 +18,8 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import app.noam.extension.chesscom.Features;
 import app.noam.extension.chesscom.Utils;
@@ -47,6 +51,8 @@ public final class LichessPuzzles {
     private static volatile boolean active;
     /** The Lichess puzzle screen is the activity in front. */
     private static volatile boolean puzzleVisible;
+    /** The session has yet to store its first puzzles, which replace what the guest queue holds. */
+    private static volatile boolean freshQueue;
     private static boolean watching;
     private static final String PUZZLE_SCREEN = "com.chess.features.puzzles.rated.RatedPuzzlesGameActivity";
     private static final String HOME_SCREEN = "com.chess.home.HomeActivity";
@@ -78,6 +84,8 @@ public final class LichessPuzzles {
     private static String resultClass() { return ""; }
     private static String scoreClass() { return ""; }
     private static String problemIdGetter() { return ""; }
+    private static String puzzleDbField() { return ""; }
+    private static String puzzleDbClear() { return ""; }
 
     public static boolean enabled() {
         return Features.lichessPuzzlesPatched() && Features.isEnabled(Features.LICHESS_PUZZLES);
@@ -91,12 +99,13 @@ public final class LichessPuzzles {
     /** What the big button does: chess.com's own puzzles, Lichess's in chess.com's screen, or nothing more. */
     public static final int SOLVE_PUZZLES = 0, LICHESS_PUZZLES = 1, HANDLED = 2;
 
-    /** Opens Liss puzzles, or the settings page when no pack is downloaded. */
+    /** Opens Lichess puzzles, or the settings page when no pack is downloaded. */
     public static int onBigButton() {
         if (solving || !enabled()) return SOLVE_PUZZLES;
-        if (storedPuzzles() == 0) {
+        Context app = Utils.context();
+        if (app == null || !PuzzleStore.get(app).any()) {
             Context context = Utils.topActivity();
-            if (context == null) context = Utils.context();
+            if (context == null) context = app;
             if (context == null) return HANDLED;
             Intent intent = new Intent(context, MorpheSettingsActivity.class)
                 .putExtra(MorpheSettingsActivity.EXTRA_PAGE, Features.PAGE_PUZZLES);
@@ -110,6 +119,7 @@ public final class LichessPuzzles {
         freezeActive = frozenPath != null || frozenUser != null;
         unfreezeAt = Long.MAX_VALUE;
         active = true;
+        freshQueue = true;
         puzzleVisible = true;
         watchScreen();
         return LICHESS_PUZZLES;
@@ -117,7 +127,7 @@ public final class LichessPuzzles {
 
     /** True while the Lichess puzzle screen is in front. */
     public static boolean onPuzzleScreen() {
-        return puzzleVisible;
+        return active && puzzleVisible;
     }
 
     /** The hub's path, or the frozen pre-session path during a return. */
@@ -140,7 +150,7 @@ public final class LichessPuzzles {
         return user != null ? user : lastUser;
     }
 
-    /** Ends the session before the hub resumes, not after the Liss screen is destroyed. */
+    /** Ends the session before the hub resumes, not after the Lichess screen is destroyed. */
     private static void endSessionIfFinishing(Activity activity) {
         if (isPuzzle(activity) && activity.isFinishing()) active = false;
     }
@@ -158,7 +168,7 @@ public final class LichessPuzzles {
         endSessionIfFinishing(activity);
     }
 
-    /** Watches the Liss screen's lifecycle. */
+    /** Watches the Lichess screen's lifecycle. */
     private static void watchScreen() {
         if (watching || !(Utils.context() instanceof Application)) return;
         watching = true;
@@ -262,25 +272,61 @@ public final class LichessPuzzles {
 
     // The puzzle repository.
 
-    /** Stores Liss puzzles for the guest puzzle flow. */
+    /**
+     * Stores Lichess puzzles for the guest puzzle flow. Only a session's first call empties the
+     * queue, so a later one never takes away the puzzle being played.
+     */
     public static void onGuestPuzzles(Object repository) {
         if (!active) return;
+        boolean fresh = freshQueue;
+        freshQueue = false;
         new Thread(() -> {
             Context context = Utils.context();
             if (context == null) return;
-            give(repository, PuzzleStore.get(context), BATCH);
+            PuzzleStore store = PuzzleStore.get(context);
+            if (fresh) clearGuestQueue(repository, store);
+            give(repository, store, BATCH);
         }, "MorpheLichessPuzzles").start();
     }
 
-    /** Scores Liss puzzles locally; null lets chess.com score others. */
+    /**
+     * Empties the guest queue. A signed-out user has chess.com's own guest puzzles in it, older than
+     * ours and so served first, and chess.com's screen would send their answers to its server. The
+     * Lichess puzzles that were in it are new again.
+     */
+    private static void clearGuestQueue(Object repository, PuzzleStore store) {
+        try {
+            Class<?> sourceClass = Class.forName("com.chess.features.puzzles.db.model.ProblemSource");
+            Field field = repository.getClass().getDeclaredField(puzzleDbField());
+            field.setAccessible(true);
+            Object puzzleDb = field.get(repository);
+            puzzleDb.getClass().getMethod(puzzleDbClear(), sourceClass).invoke(puzzleDb, enumValue(sourceClass, "RATED_GUEST"));
+            store.ungive();
+        } catch (Throwable throwable) {
+            Utils.logError("Guest puzzles not cleared", throwable);
+        }
+    }
+
+    /**
+     * Scores a session's puzzles locally; null lets chess.com score others. No answer of a session
+     * ever reaches chess.com, as its server refuses them.
+     */
     public static Object solved(Object repository, Object solution) {
         if (!active || solution == null) return null;
         try {
             long id = ((Number) solution.getClass().getMethod(problemIdGetter()).invoke(solution)).longValue();
-            if (id < ID_BASE) return null;
             Context context = Utils.context();
             if (context == null) return null;
             PuzzleStore store = PuzzleStore.get(context);
+            if (id < ID_BASE) {
+                // One of chess.com's guest puzzles was served before the queue was cleared: it is
+                // left unrated, and the queue gets Lichess puzzles only.
+                Utils.log("Lichess session: chess.com puzzle " + id + " left unrated");
+                clearGuestQueue(repository, store);
+                give(repository, store, BATCH);
+                Glicko current = glicko();
+                return result(solution, current, current);
+            }
             long number = id - ID_BASE;
             int puzzleRating = store.rating(number);
             boolean correct = "CORRECT".equals(String.valueOf(fieldOfType(solution, "Outcome")));
@@ -290,34 +336,40 @@ public final class LichessPuzzles {
             save(after);
             count(correct ? SOLVED : FAILED);
             store.solved(number);
+            STORE_WORK.execute(() -> counts = null);
             give(repository, store, 1);
-
-            int newRating = (int) Math.round(after.rating);
-            int oldRating = (int) Math.round(before.rating);
-            Object empty = emptyBytes();
-            Class<?> ratingClass = Class.forName("chesscom.puzzles.v1.Rating");
-            Class<?> algorithm = Class.forName("chesscom.puzzles.v1.RatingAlgorithm");
-            Object rating = ratingClass.getConstructor(int.class, int.class, float.class, algorithm, boolean.class,
-                    String.class, int.class, float.class, Class.forName("okio.ByteString"))
-                .newInstance(newRating, newRating - oldRating, (float) after.deviation,
-                    enumValue(algorithm, "RATING_ALGORITHM_STANDARD_RATING"), true, "", oldRating,
-                    (float) before.deviation, empty);
-            Class<?> pathResultClass = Class.forName("chesscom.puzzles.v1.PuzzlePathResult");
-            Object pathResult = null;
-            for (Constructor<?> constructor : pathResultClass.getConstructors()) {
-                Class<?>[] types = constructor.getParameterTypes();
-                if (types.length == 4 && types[0] == int.class) {
-                    pathResult = constructor.newInstance(0, null, null, empty);
-                }
-            }
-            Object score = Class.forName(scoreClass()).getConstructor(pathResultClass, ratingClass, Throwable.class)
-                .newInstance(pathResult, rating, null);
-            Class<?> result = Class.forName(resultClass());
-            for (Constructor<?> constructor : result.getConstructors()) {
-                if (constructor.getParameterTypes().length == 2) return constructor.newInstance(solution, score);
-            }
+            return result(solution, before, after);
         } catch (Throwable throwable) {
             Utils.logError("Lichess puzzle not scored", throwable);
+        }
+        return null;
+    }
+
+    /** The repository's result for a solution, with the rating before and after it. */
+    private static Object result(Object solution, Glicko before, Glicko after) throws Exception {
+        int newRating = (int) Math.round(after.rating);
+        int oldRating = (int) Math.round(before.rating);
+        Object empty = emptyBytes();
+        Class<?> ratingClass = Class.forName("chesscom.puzzles.v1.Rating");
+        Class<?> algorithm = Class.forName("chesscom.puzzles.v1.RatingAlgorithm");
+        Object rating = ratingClass.getConstructor(int.class, int.class, float.class, algorithm, boolean.class,
+                String.class, int.class, float.class, Class.forName("okio.ByteString"))
+            .newInstance(newRating, newRating - oldRating, (float) after.deviation,
+                enumValue(algorithm, "RATING_ALGORITHM_STANDARD_RATING"), true, "", oldRating,
+                (float) before.deviation, empty);
+        Class<?> pathResultClass = Class.forName("chesscom.puzzles.v1.PuzzlePathResult");
+        Object pathResult = null;
+        for (Constructor<?> constructor : pathResultClass.getConstructors()) {
+            Class<?>[] types = constructor.getParameterTypes();
+            if (types.length == 4 && types[0] == int.class) {
+                pathResult = constructor.newInstance(0, null, null, empty);
+            }
+        }
+        Object score = Class.forName(scoreClass()).getConstructor(pathResultClass, ratingClass, Throwable.class)
+            .newInstance(pathResult, rating, null);
+        Class<?> result = Class.forName(resultClass());
+        for (Constructor<?> constructor : result.getConstructors()) {
+            if (constructor.getParameterTypes().length == 2) return constructor.newInstance(solution, score);
         }
         return null;
     }
@@ -412,10 +464,18 @@ public final class LichessPuzzles {
         if (preferences != null) preferences.edit().putInt(key, preferences.getInt(key, 0) + 1).apply();
     }
 
-    // Offline puzzle packs, for the settings page.
+    // Offline puzzle packs, for the settings page. A pack holds up to millions of puzzles, so the
+    // database is never used on the main thread here: downloads, counts and deletes run one at a time.
+
+    private static final ExecutorService STORE_WORK = Executors.newSingleThreadExecutor();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     /** A download in progress: 0..100, -1 while its size is unknown, or null when none is. */
     private static volatile Integer downloading;
+    private static volatile boolean deleting;
+    /** The puzzles on the phone and how many of them are solved, or null until counted again. */
+    private static volatile int[] counts;
+    private static volatile boolean counting;
 
     public static String[] packNames() {
         return PuzzleStore.PACK_NAMES;
@@ -429,31 +489,61 @@ public final class LichessPuzzles {
         return downloading;
     }
 
-    public static int storedPuzzles() {
-        Context context = Utils.context();
-        return context == null ? 0 : PuzzleStore.get(context).count();
+    public static boolean deleting() {
+        return deleting;
     }
 
-    public static int storedSolved() {
+    /** The puzzles on the phone and how many are solved; null while they are counted, then done runs. */
+    public static int[] counts(Runnable done) {
+        int[] known = counts;
         Context context = Utils.context();
-        return context == null ? 0 : PuzzleStore.get(context).solvedCount();
+        if (known != null || context == null || counting) return known;
+        counting = true;
+        STORE_WORK.execute(() -> {
+            try {
+                PuzzleStore store = PuzzleStore.get(context);
+                counts = new int[]{store.count(), store.solvedCount()};
+            } catch (Throwable throwable) {
+                // Unreadable puzzles are as good as none, and asking again would fail again.
+                Utils.logError("Lichess puzzles not counted", throwable);
+                counts = new int[]{0, 0};
+            } finally {
+                counting = false;
+            }
+            MAIN.post(done);
+        });
+        return null;
     }
 
     /** Downloads a pack in the background; a toast says how it went. */
     public static void download(int pack) {
         Context context = Utils.context();
-        if (context == null || downloading != null) return;
+        if (context == null || downloading != null || deleting) return;
         downloading = -1;
-        new Thread(() -> {
-            boolean ok = PuzzleStore.get(context).download(pack, percent -> downloading = percent);
+        STORE_WORK.execute(() -> {
+            String error = PuzzleStore.get(context).download(pack, percent -> downloading = percent);
+            counts = null;
             downloading = null;
-            Utils.toast(ok ? "Lichess puzzles downloaded" : "Couldn't download Lichess puzzles. Check your connection.");
-        }, "MorpheLichessPack").start();
+            Utils.toast(error == null ? "Lichess puzzles downloaded" : error);
+        });
     }
 
-    public static void deletePuzzles() {
+    /** Deletes every puzzle in the background, then runs done on the main thread. */
+    public static void deletePuzzles(Runnable done) {
         Context context = Utils.context();
-        if (context != null && downloading == null) PuzzleStore.get(context).clear();
+        if (context == null || downloading != null || deleting) return;
+        deleting = true;
+        STORE_WORK.execute(() -> {
+            try {
+                PuzzleStore.get(context).clear();
+            } catch (Throwable throwable) {
+                Utils.logError("Lichess puzzles not deleted", throwable);
+            } finally {
+                counts = null;
+                deleting = false;
+            }
+            MAIN.post(done);
+        });
     }
 
     /** A Lichess session is open: chess.com's puzzle screen treats it as rated, online play. */

@@ -197,6 +197,28 @@ val lichessPuzzlesPatch = bytecodePatch(
         name("converterMethod", converter.name)
         name("daoField", repository.fields.single { it.type == daoInsert.definingClass }.name)
         name("daoInsert", daoInsert.name)
+        // Chess.com's own guest puzzles (a signed-out user has them) share the guest queue with ours
+        // and come first, oldest first: a session clears the queue with the puzzle database's own
+        // "delete every puzzle of a source" before it stores its first Lichess puzzles.
+        var clear: Pair<String, String>? = null
+        classDefForEach { classDef ->
+            if (clear != null) return@classDefForEach
+            classDef.methods.firstOrNull { method ->
+                method.returnType == "V" && method.parameterTypes.map(CharSequence::toString) == listOf(SOURCE) &&
+                    method.implementation?.instructions?.any { instruction ->
+                        ((instruction as? ReferenceInstruction)?.reference as? StringReference)?.string ==
+                            "DELETE FROM tactics_problem WHERE source = ?"
+                    } == true
+            }?.let { clear = classDef.type to it.name }
+        }
+        val (clearClass, clearMethod) = clear ?: throw PatchException("The puzzle database's clear was not found")
+        // The repository's field holding that database: a type the class or one it extends implements.
+        val clearTypes = generateSequence(clearClass) { type -> classDefByOrNull { it.type == type }?.superclass }
+            .flatMap { type -> sequenceOf(type) + (classDefByOrNull { it.type == type }?.interfaces?.asSequence() ?: emptySequence()) }
+            .toSet()
+        name("puzzleDbField", repository.fields.singleOrNull { it.type in clearTypes }?.name
+            ?: throw PatchException("The repository's puzzle database was not found"))
+        name("puzzleDbClear", clearMethod)
         // The puzzle screen's guest puzzles: the refill above is only called by Home for real guests.
         val guestPuzzles = repository.methods.singleOrNull { method ->
             method.parameterTypes.isEmpty() && method.returnType != "V" &&
@@ -208,7 +230,7 @@ val lichessPuzzlesPatch = bytecodePatch(
         } ?: throw PatchException("The guest puzzles were not found")
         guestPuzzles.addInstructions(0, "invoke-static/range { p0 .. p0 }, $PUZZLES->onGuestPuzzles(Ljava/lang/Object;)V")
 
-        // A Liss session supplies puzzles, solutions and rating locally; skip server calls.
+        // A Lichess session supplies puzzles, solutions and rating locally; skip server calls.
         fun MutableMethod.skipIf(condition: String, result: String = UNIT) = addInstructionsWithLabels(
             0,
             """
@@ -228,9 +250,9 @@ val lichessPuzzlesPatch = bytecodePatch(
                 val result = if (method.parameterTypes.firstOrNull()?.toString() == "J") NOTHING else UNIT
                 method.skipIf("session", result)
             }
-        // Don't mix chess.com's guest puzzles into the Liss database.
+        // Don't mix chess.com's guest puzzles into the Lichess database.
         refill.skipIf("session")
-        // The Liss screen must not refresh the hub's path; the hub does that on resume.
+        // The Lichess screen must not refresh the hub's path; the hub does that on resume.
         mutableClassDefBy(PATH_REPOSITORY).methods.filter {
             it.parameterTypes.size == 1 && it.returnType == "Ljava/lang/Object;"
         }.forEach { it.skipIf("onPuzzleScreen") }
@@ -248,7 +270,7 @@ val lichessPuzzlesPatch = bytecodePatch(
         } ?: throw PatchException("The Puzzles hub's resume was not found")
         refreshOnResume.addInstructions(0, "invoke-direct { p0 }, $HOME_PUZZLES_VM->${refreshData.name}()V")
 
-        // Keep the hub's map and XP on the pre-session values while Liss closes.
+        // Keep the hub's map and XP on the pre-session values while Lichess closes.
         val hubState = mutableClassDefBy(HUB_STATE)
         val hubStateConstructor = hubState.methods.singleOrNull { method ->
             method.name == "<init>" && method.parameterTypes.size == 12 &&
@@ -299,7 +321,10 @@ val lichessPuzzlesPatch = bytecodePatch(
             ExternalLabel("morphe_score", score.getInstruction(0)),
         )
 
-        // Play the session as rated/online, with the Liss rating and stats.
+        // During a Lichess session chess.com's puzzle screen plays it as rated and online: the
+        // guest mode stays the data source, but "local mode" is off (solutions get scored, rating
+        // stats load), the layout is Classic, and the rating it shows is the Lichess one. The
+        // server calls that come with it are skipped above.
         fun MutableMethod.whileSession(value: String) = addInstructionsWithLabels(
             0,
             """
@@ -310,9 +335,11 @@ val lichessPuzzlesPatch = bytecodePatch(
             """,
             ExternalLabel("morphe_no_session", getInstruction(0)),
         )
-        // Wait for the background Liss insert instead of ending the guest flow.
+        // Once a guest has started guest mode, an empty guest queue ends chess.com's guest flow with
+        // its sign-up wall. During a session it counts as never started, so the screen waits for the
+        // Lichess puzzles stored in the background. The guest refill, its other reader, is skipped.
         mutableClassDefBy(GUEST_STORE).methods.single { it.parameterTypes.isEmpty() && it.returnType == "Z" }
-            .whileSession("const/4 v0, 0x1\nreturn v0")
+            .whileSession("const/4 v0, 0x0\nreturn v0")
         val regularMode = enumField(MODE, "REGULAR")
         mutableClassDefBy(MODE).methods.single { it.parameterTypes.isEmpty() && it.returnType == "Z" }
             .whileSession("const/4 v0, 0x0\nreturn v0")
@@ -369,7 +396,9 @@ val lichessPuzzlesPatch = bytecodePatch(
             ExternalLabel("morphe_rating_stats", ratingStats.getInstruction(0)),
         )
 
-        // The tab's menu: ours takes the big button, Solve Puzzles goes above it (or first).
+        // The Puzzles tab's menu is PathRootMenuState(expanded, big button text, button above it,
+        // buttons, ...). The button above is empty unless there is a next lesson. Ours takes the big
+        // button and Solve Puzzles goes above it, or first in the menu's list when Next Lesson has the spot.
         mutableClassDefBy(PUZZLES_TAB).methods.forEach { method ->
             val instructions = method.implementation?.instructions?.toList() ?: return@forEach
             val index = instructions.indexOfFirst { instruction ->
