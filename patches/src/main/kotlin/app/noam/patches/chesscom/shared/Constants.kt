@@ -6,14 +6,21 @@ import app.morphe.patcher.patch.Compatibility
 internal object Constants {
     const val CHESSCOM_PACKAGE = "com.chess"
 
-    // The only version the fingerprints are verified against (versionCode 280075).
+    // The version the fingerprints were written against (versionCode 280075).
     const val CHESSCOM_VERSION = "4.10.18-googleplay"
+
+    // Under test against the same fingerprints (versionCode 280100).
+    const val CHESSCOM_VERSION_41023 = "4.10.23-googleplay"
 
     val COMPATIBILITY = Compatibility(
         packageName = CHESSCOM_PACKAGE,
         name = "Chess.com",
-        targets = listOf(AppTarget(version = CHESSCOM_VERSION)),
+        targets = listOf(
+            AppTarget(version = CHESSCOM_VERSION),
+            AppTarget(version = CHESSCOM_VERSION_41023),
+        ),
     )
+
 
     const val EXTENSION_FILE = "extensions/chesscom.mpe"
     const val EXTENSION_PACKAGE = "Lapp/noam/extension/chesscom"
